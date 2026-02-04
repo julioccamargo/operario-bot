@@ -1,0 +1,89 @@
+version: '3.8'
+
+services:
+  # ----------------------------------------------------------------
+  # 1. CORE API (SEU PYTHON)
+  # ----------------------------------------------------------------
+  api:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    container_name: operario-bot-core
+    restart: unless-stopped
+    volumes:
+      - ../src:/app/src
+    env_file:
+      - ../.env
+    ports:
+      - "8000:8000"
+    networks:
+      - operario-net
+    depends_on:
+      - evolution
+
+  # ----------------------------------------------------------------
+  # 2. WHATSAPP GATEWAY (EVOLUTION API)
+  # ----------------------------------------------------------------
+  evolution:
+    image: atendai/evolution-api:v2.2.2
+    container_name: operario-evolution
+    restart: always
+    volumes:
+      - evolution_store:/evolution/store
+    env_file:
+      - ../.env
+    environment:
+      - SERVER_PORT=8080
+      - DATABASE_ENABLED=true
+      - DATABASE_CONNECTION_URI=postgresql://postgres:${DB_PASSWORD}@postgres:5432/evolution
+      - DATABASE_PROVIDER=postgresql
+      - REDIS_ENABLED=true
+      - REDIS_URI=redis://redis:6379/0
+      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
+    ports:
+      - "8081:8080"
+    networks:
+      - operario-net
+    depends_on:
+      - postgres
+      - redis
+
+  # ----------------------------------------------------------------
+  # 3. BANCO DE DADOS (POSTGRES)
+  # ----------------------------------------------------------------
+  postgres:
+    image: postgres:15-alpine
+    container_name: operario-postgres
+    restart: always
+    env_file:
+      - ../.env
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=evolution
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - operario-net
+
+  # ----------------------------------------------------------------
+  # 4. CACHE (REDIS)
+  # ----------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: operario-redis
+    restart: always
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    networks:
+      - operario-net
+
+volumes:
+  evolution_store:
+  postgres_data:
+  redis_data:
+
+networks:
+  operario-net:
+    driver: bridge
